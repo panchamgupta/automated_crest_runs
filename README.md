@@ -49,6 +49,29 @@ Optional flags:
 - `--sdf`: only needed if `--outdir` does not exist and you want auto-create via dry-run.
 - `--crest-exe`, `--xtb-exe`: recommended on cluster nodes where binaries are not on PATH.
 
+## Step 3: Post-process CREST outputs to SDF
+
+After CREST jobs complete, convert XYZ conformer files to SDF format with energy properties:
+
+```bash
+python3 process_CREST_xyz_to_SDF.py \
+  --job-list job_dirs.list \
+  --charge-sdf initial_SD_file_to_run_crest_job.sdf \
+  --charge-id-prop _Name
+```
+
+What it does:
+
+- Reads `crest_conformers.xyz` from each job folder listed in `job_dirs.list`.
+- Converts XYZ frames to SDF molecules using RDKit bond perception.
+- Derives formal charges from the input SDF (via `--charge-sdf`), matching by molecule ID (`--charge-id-prop`).
+- Adds energy properties:
+  - `CREST_Energy`: raw energy in Hartree
+  - `CREST_Energy_kcalmol`: energy in kcal/mol
+  - `CREST_RelativeEnergy_kcalmol`: relative energy (lowest - current) in kcal/mol
+- Creates individual `crest_conformers.sdf` in each job folder.
+- Combines all SDF files into master `crest_jobs_combined.sdf`.
+
 ## TOML flags explanation
 
 `run_crest_from_sdf.py` writes `crest_input.toml` in each job folder.
