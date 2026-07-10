@@ -1,9 +1,10 @@
 # CREST Array Submission Workflow
 
-This folder runs CREST jobs in two stages:
+This folder runs CREST jobs in three stages:
 
 1. Generate per-molecule job folders with `--dry-run`.
 2. Submit those folders as a SLURM array.
+3. Post-process CREST XYZ outputs to SDF with template-first mapping.
 
 ## Files
 
@@ -11,6 +12,7 @@ This folder runs CREST jobs in two stages:
 - `submit_crest_array.sh`: creates `job_dirs.list` and submits SLURM array jobs.
 - `submit_crest_array.slurm`: executes one molecule folder per SLURM array task by calling `run_crest_from_sdf.py --job-dir`.
 - `run_crest_from_sdf.py`: main workflow (xTB pre-opt + CREST run).
+- `process_CREST_xyz_to_SDF_v2.py`: post-processes `crest_conformers.xyz` into SDF with template-first bond mapping, energy properties, and per-molecule run summary.
 
 ## Step 1: Prepare folders (dry-run)
 
@@ -54,23 +56,39 @@ Optional flags:
 After CREST jobs complete, convert XYZ conformer files to SDF format with energy properties:
 
 ```bash
-python3 process_CREST_xyz_to_SDF.py \
+python3 process_CREST_xyz_to_SDF_v2.py \
   --job-list job_dirs.list \
   --charge-sdf initial_SD_file_to_run_crest_job.sdf \
-  --charge-id-prop _Name
+  --charge-id-prop _Name \
+  --mode template-first
 ```
 
 What it does:
 
 - Reads `crest_conformers.xyz` from each job folder listed in `job_dirs.list`.
-- Converts XYZ frames to SDF molecules using RDKit bond perception.
-- Derives formal charges from the input SDF (via `--charge-sdf`), matching by molecule ID (`--charge-id-prop`).
+- **Template-first mode (default/recommended):**
+  - Uses `--charge-sdf` as the template source.
+  - Matches each job folder name to input SDF molecule ID using `--charge-id-prop` (for example `_Name`).
+  - Copies template bond connectivity, bond orders, and formal charges directly, then replaces coordinates from XYZ.
+  - This is more robust than pure bond inference because topology comes from the original input molecule.
+- **ID match process:**
+  - For each folder, script checks whether an ID match exists in the template SDF.
+  - If match is found, template mapping is used.
+  - If no match is found (or template validation fails), script falls back to `infer-from-xyz` for that molecule.
+- **Fallback mode:**
+  - You can force legacy behavior using `--mode infer-from-xyz`.
+  - In this mode, bonds are inferred from XYZ + charge, with optional per-molecule charge lookup from `--charge-sdf`.
 - Adds energy properties:
   - `CREST_Energy`: raw energy in Hartree
   - `CREST_Energy_kcalmol`: energy in kcal/mol
   - `CREST_RelativeEnergy_kcalmol`: relative energy (lowest - current) in kcal/mol
 - Creates individual `crest_conformers.sdf` in each job folder.
 - Combines all SDF files into master `crest_jobs_combined.sdf`.
+- Writes a per-molecule verification CSV summary (default: `process_CREST_xyz_to_SDF_v2_run_summary.csv` beside `job_dirs.list`) with:
+  - ID match status
+  - template found / charge lookup found
+  - whether template bond map matches XYZ-inferred bond map
+  - conformers written / failed frames / notes
 
 ## TOML flags explanation
 
